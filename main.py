@@ -175,7 +175,7 @@ line1, = ax.plot([0, 1], [0, 0], 'b-')
 
 timestamp_ms = 0
 
-plot_counter=0
+# plot_counter = 0
 
 tick = Tick()
 last_tick = tick
@@ -196,16 +196,26 @@ while True:
             print("E")
         elif dt > 1.1 * MVMT_TIMESCALE_MS:
             missed = round(dt/MVMT_TIMESCALE_MS) - 1
-            print('M' * missed)
+            if missed > 0:
+                print('M' * missed)
+
+            last_timestamp = last_tick._timestamp + missed*MVMT_TIMESCALE_MS
+            dt = tick._timestamp - last_timestamp
+            if dt < 0.9 * MVMT_TIMESCALE_MS:
+                print("E")
+            elif dt > 1.1 * MVMT_TIMESCALE_MS:
+                print("E")
+            else:
+                print("T: %.2f ms" % dt)
 
             last_tick = tick
         else:
             print("T: %.2f ms" % dt)
-            plot_counter += 1
-            if plot_counter%10 == 0:
-                tick.plot(line1)
-                fig.canvas.draw()
-                fig.canvas.flush_events()
+            # plot_counter += 1
+            # if plot_counter%10 == 0:
+            #     tick.plot(line1)
+            #     fig.canvas.draw()
+            #     fig.canvas.flush_events()
 
             last_tick = tick
 
