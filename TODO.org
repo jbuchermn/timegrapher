@@ -1,0 +1,12 @@
+#+TITLE: TODO
+
+** DONE Plot wave-forms
+** DONE Plot missed / erroneous ticks in a useful manner
+** DONE Plot long-term rate, beat error, amplitude with smoothed curve
+** DONE Beat rate detect
+** TODO Plot peaks
+** TODO Control peak threshold / Better peak detection
+** TODO Get rid of all errors in a clean environment (Needs better capture implementation)
+*** TODO Possibly: Improve capture by capturing longtime wave and then processing it
+*** TODO Is missing Audio frames due to incredibly slow matplotlib still an issue? Implement check
+** TODO Verify wave-form quality compared to tg-timer (ETA2782)

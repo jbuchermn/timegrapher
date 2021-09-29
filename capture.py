@@ -16,9 +16,11 @@ MS_PER_FRAME = 1000. / SAMPLE_RATE
 HIGHPASS_FREQ = 3000
 HIGHPASS_ORDER = 10
 
-TICK_PRERECORD = 0.15
+TICK_PRERECORD = 0.2
 TICK_MINLENGTH = 0.3
 TICK_MAXLENGTH = 0.5
+
+TIMESTAMP_FILTER = 0.15
 
 TICK_PEAK_FFT_SIZE = 64
 
@@ -42,7 +44,7 @@ class Tick:
         - Append or skip if self has finished, return False
         - Skip if self has not started, return True
         """
-        max_val = max(-next_input.min(), next_input.max())
+        max_val = max(-next_input.min(), next_input.max()) / 2.**15
         if max_val > self._control.tick_threshold or (
             self._started and self._buffer_at < TICK_MINLENGTH*self._control.get_mvmt_timescale_frames()):
             # Recording
@@ -75,7 +77,10 @@ class Tick:
                 return False
 
     def get_wave(self):
-        return np.arange(self._buffer.shape[0]) * MS_PER_FRAME, self._buffer
+        if len(self._ticks) == 0:
+            self._calculate_ticks()
+
+        return (np.arange(self._buffer.shape[0]) - self._ticks[0][0])*MS_PER_FRAME, self._buffer
 
     def get_start_timestamp(self):
         if len(self._ticks) == 0:
@@ -157,6 +162,10 @@ class Tick:
         # input("Done?")
         # END DEBUG
 
+        if len(self._ticks) == 0:
+            self._ticks = [(0, 0)]
+
+
 class Capture(Thread):
     def __init__(self, control: Control, device: str, consumer: Callable[[Union[Tick, float]], None]):
         super().__init__()
@@ -169,32 +178,73 @@ class Capture(Thread):
             channels=1,
             rate=int(SAMPLE_RATE),
             format=alsaaudio.PCM_FORMAT_S16_LE,
-            periodsize=160,
+            periodsize=800,
         )
 
         self._highpass = signal.butter(HIGHPASS_ORDER, HIGHPASS_FREQ, 'hp', fs=SAMPLE_RATE, output='sos')
-        self._timestamp_ms: int = 0
 
         self._running: bool = True
+        self._last_timestamp_ms: int = -1
+        self._within_MEM = 0
 
     def stop(self):
         self._running = False
 
-    def _error(self):
+    def _error(self, tick):
         print("E")
-        pass
+        if self._within_MEM == 1:
+            self._within_MEM += 1
+        self._control.error(tick.get_start_timestamp())
 
     def _miss(self, timestamp: float):
         print("M")
+        if self._within_MEM == 0 or self._within_MEM == 2:
+            self._within_MEM += 1
+        self._control.miss(timestamp)
         self._consumer(timestamp)
 
     def _tick(self, tick: Tick):
         print("T")
+        self._control.tick(tick.get_start_timestamp())
         self._consumer(tick)
 
+    def _process(self, tick, timestamp_ms):
+        if self._within_MEM == 3:
+            # RESET
+            print("Reset...")
+            self._within_MEM = 0
+            self._last_timestamp_ms = -1
+
+        if self._last_timestamp_ms < 0:
+            self._tick(tick)
+            self._last_timestamp_ms = tick.get_start_timestamp()
+            return
+
+        dt = (tick.get_start_timestamp() - self._last_timestamp_ms)
+
+        if dt < (1.-TIMESTAMP_FILTER) * self._control.get_mvmt_timescale_ms():
+            self._error(tick)
+        elif dt > (1.+TIMESTAMP_FILTER) * self._control.get_mvmt_timescale_ms():
+            missed = round(dt/self._control.get_mvmt_timescale_ms()) - 1
+            if missed > 0:
+                for i in range(missed):
+                    self._last_timestamp_ms += self._control.get_mvmt_timescale_ms()
+                    self._miss(self._last_timestamp_ms)
+                self._process(tick, timestamp_ms)
+
+            else:
+                self._error(tick)
+        else:
+            self._tick(tick)
+            self._last_timestamp_ms = tick.get_start_timestamp()
+
+
     def run(self):
+
+        timestamp_ms = 0
+        no_signal_timestamp_ms = 0
+
         tick = Tick(self._control)
-        last_tick = tick
         while self._running:
             l, data = self._inp.read()
             if l == 0:
@@ -202,30 +252,16 @@ class Capture(Thread):
                 continue
             if len(data) == 0:
                 continue
+
             arr = np.frombuffer(data[:(2*l)], dtype=np.int16)
-            arr_filtered = signal.sosfilt(self._highpass, arr)
+            arr = signal.sosfilt(self._highpass, arr)
 
-            self._timestamp_ms += l * MS_PER_FRAME
-            if not tick.possibly_append(arr_filtered, self._timestamp_ms):
-                dt = (tick._timestamp - last_tick._timestamp)
-                if dt < 0.9 * self._control.get_mvmt_timescale_ms():
-                    self._error()
-                elif dt > 1.1 * self._control.get_mvmt_timescale_ms():
-                    missed = round(dt/self._control.get_mvmt_timescale_ms()) - 1
-                    for i in range(missed):
-                        self._miss(last_tick._timestamp + i*self._control.get_mvmt_timescale_ms())
-
-                    last_timestamp = last_tick._timestamp + missed*self._control.get_mvmt_timescale_ms()
-                    dt = tick._timestamp - last_timestamp
-                    if dt < 0.9 * self._control.get_mvmt_timescale_ms():
-                        self._error()
-                    elif dt > 1.1 * self._control.get_mvmt_timescale_ms():
-                        self._error()
-
-                    self._tick(tick)
-                    last_tick = tick
-                else:
-                    self._tick(tick)
-                    last_tick = tick
-
+            timestamp_ms += l * MS_PER_FRAME
+            if not tick.possibly_append(arr, timestamp_ms):
+                self._process(tick, timestamp_ms)
                 tick = Tick(self._control)
+                no_signal_timestamp_ms = timestamp_ms
+            elif timestamp_ms - no_signal_timestamp_ms > 1000.:
+                print("No signal...")
+                self._control.no_signal()
+                no_signal_timestamp_ms = timestamp_ms

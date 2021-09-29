@@ -8,7 +8,22 @@ if TYPE_CHECKING:
     from capture import Tick
     from control import Control
 
+LIFT_ANGLE = 52
 PATTERN_TICKS = 100
+
+class TimeSeries:
+    def __init__(self):
+        self.ts: list[float] = []
+        self.raw: list[float] = []
+        self._smooth: float = 0.
+        self.smooth: list[float] =[]
+
+    def __call__(self, timestamp: float, value: float):
+        self.ts += [timestamp]
+        self.raw += [value]
+
+        self._smooth = self._smooth * 0.95 + value * 0.05
+        self.smooth += [self._smooth]
 
 class Timegrapher:
     def __init__(self, control: Control):
@@ -23,13 +38,13 @@ class Timegrapher:
         self._pattern_idx: int = 0
         self.pattern: list[Optional[float]] = [None] * PATTERN_TICKS
 
-        self.rate: list[tuple[float, Optional[float]]] = []
-        self.beat_error: list[tuple[float, Optional[float]]] = []
-        self.amplitude: list[tuple[float, Optional[float], Optional[float]]] = []
+        self.rate: TimeSeries = TimeSeries()
+        self.beat_error: TimeSeries = TimeSeries()
+        self.amplitude_tick: TimeSeries = TimeSeries()
+        self.amplitude_tock: TimeSeries = TimeSeries()
 
-        self.tick_wave: tuple[np.ndarray, np.ndarray] = (np.zeros(shape=(1,)), np.zeros(shape=(1,)))
-        self.tock_wave: tuple[np.ndarray, np.ndarray] = (np.zeros(shape=(1,)), np.zeros(shape=(1,)))
-
+        self.tick_wave: tuple[np.ndarray, np.ndarray, float] = (np.zeros(shape=(1,)), np.zeros(shape=(1,)), 0)
+        self.tock_wave: tuple[np.ndarray, np.ndarray, float] = (np.zeros(shape=(1,)), np.zeros(shape=(1,)), 0)
 
     def reset(self):
         self._pattern = []
@@ -43,45 +58,62 @@ class Timegrapher:
         beat_error: Optional[float] = None
         dt: Optional[float] = None
 
+        """
+        Calculate rate, beat_error, amplitude (dt), Book-keeping
+        """
         if not isinstance(tick, float):
             dt = tick.get_final_timestamp() - tick.get_start_timestamp()
 
-        if self._at_tock:
-            if not isinstance(tick, float) and self._last_tick is not None:
-                rate = tick.get_start_timestamp() - self._last_tick.get_start_timestamp()
-            if not isinstance(tick, float) and self._last_tick is not None and self._last_tock is not None:
-                beat_error = np.abs(tick.get_start_timestamp() - 2*self._last_tick.get_start_timestamp() +
-                                    self._last_tock.get_start_timestamp())
+            if self._at_tock:
+                if self._last_tick is not None:
+                    rate = tick.get_start_timestamp() - self._last_tick.get_start_timestamp()
+                if self._last_tick is not None and self._last_tock is not None:
+                    beat_error = np.abs(tick.get_start_timestamp() - 2*self._last_tick.get_start_timestamp() +
+                                        self._last_tock.get_start_timestamp())
 
-            self._last_tock = None if isinstance(tick, float) else tick
+                self._last_tock = tick
+            else:
+                if self._last_tock is not None:
+                    rate = tick.get_start_timestamp() - self._last_tock.get_start_timestamp()
+                if self._last_tick is not None and self._last_tock is not None:
+                    beat_error = np.abs(tick.get_start_timestamp() - 2*self._last_tock.get_start_timestamp() +
+                                        self._last_tick.get_start_timestamp())
+                self._last_tick = tick
         else:
-            if not isinstance(tick, float) and self._last_tock is not None:
-                rate = tick.get_start_timestamp() - self._last_tock.get_start_timestamp()
-            if not isinstance(tick, float) and self._last_tick is not None and self._last_tock is not None:
-                beat_error = np.abs(tick.get_start_timestamp() - 2*self._last_tock.get_start_timestamp() +
-                                    self._last_tick.get_start_timestamp())
+            if self._at_tock:
+                self._last_tock = None
+            else:
+                self._last_tick = None
 
-            self._last_tick = None if isinstance(tick, float) else tick
 
+        """
+        Store rate, beat_error, amplitude and wave-form
+        """
         if not isinstance(tick, float):
-            self.rate += [(tick.get_start_timestamp(), rate)]
-            self.beat_error += [(tick.get_start_timestamp(), beat_error)]
+            if rate is not None:
+                rate = (24 * 3600) - (rate * self._control.mvmt_bph * 24. / 1000.)
+                self.rate(tick.get_start_timestamp(), rate)
+            if beat_error is not None:
+                self.beat_error(tick.get_start_timestamp(), beat_error)
+
             amplitude: Optional[float] = None
             if dt is not None:
-                amplitude = 3600. * self._control.mvmt_lift_angle / (dt * math.pi * self._control.mvmt_bph)
+                amplitude = 3600000. * LIFT_ANGLE / (dt * math.pi * self._control.mvmt_bph)
 
+            ts, vals = tick.get_wave()
+            wave = (ts, vals/max(np.max(vals), -np.min(vals)), tick.get_final_timestamp() - tick.get_start_timestamp())
             if self._at_tock:
-                self.amplitude[-1] = (self.amplitude[-1][0], self.amplitude[-1][1], amplitude)
-                self.tock_wave = tick.get_wave()
+                if amplitude is not None:
+                    self.amplitude_tock(tick.get_start_timestamp(), amplitude)
+                self.tock_wave = wave
             else:
-                self.amplitude += [(tick.get_start_timestamp(), amplitude, None)]
-                self.tick_wave = tick.get_wave()
-        else:
-            self.rate += [(tick, None)]
-            self.beat_error += [(tick, None)]
-            if not self._at_tock:
-                self.amplitude += [(tick, None, None)]
+                if amplitude is not None:
+                    self.amplitude_tick(tick.get_start_timestamp(), amplitude)
+                self.tick_wave = wave
 
+        """
+        Pattern
+        """
         if self._pattern_ref_timestamp is None:
             self._pattern_ref_timestamp = tick.get_start_timestamp() if not isinstance(tick, float) else tick
 
@@ -94,4 +126,7 @@ class Timegrapher:
         if self._pattern_idx == 0:
             self._pattern_ref_timestamp += PATTERN_TICKS * self._control.get_mvmt_timescale_ms()
 
+        """
+        Book-keeping
+        """
         self._at_tock = not self._at_tock
