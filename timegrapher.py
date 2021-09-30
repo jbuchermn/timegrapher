@@ -36,7 +36,10 @@ class Timegrapher:
 
         self._pattern_ref_timestamp: Optional[float] = None
         self._pattern_idx: int = 0
+
         self.pattern: list[Optional[float]] = [None] * PATTERN_TICKS
+
+        self.mvmt_timescale_ms: float = 0
 
         self.rate: TimeSeries = TimeSeries()
         self.beat_error: TimeSeries = TimeSeries()
@@ -57,6 +60,8 @@ class Timegrapher:
         rate: Optional[float] = None
         beat_error: Optional[float] = None
         dt: Optional[float] = None
+
+        self.mvmt_timescale_ms = self._control.get_mvmt_timescale_ms()
 
         """
         Calculate rate, beat_error, amplitude (dt), Book-keeping

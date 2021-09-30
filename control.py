@@ -10,11 +10,11 @@ CONTROL_UPDATE_INTERVAL = 20
 class Control:
     def __init__(self):
         self.mvmt_bph: int = 18000
-        self.tick_threshold: int = 0.1
+        self.tick_threshold: int = 0.2
 
         # TODO: Control loop based on number of detected ticks per tick and quality of beat error
         # (missing the correct first tick often means beat error jumps a lot)
-        self.peak_threshold: float = 0.001
+        self.peak_threshold: float = 0.01
 
         self._current_misses: int = 0
         self._current_errors: int = 0

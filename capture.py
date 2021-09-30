@@ -178,7 +178,7 @@ class Capture(Thread):
             channels=1,
             rate=int(SAMPLE_RATE),
             format=alsaaudio.PCM_FORMAT_S16_LE,
-            periodsize=800,
+            periodsize=160,
         )
 
         self._highpass = signal.butter(HIGHPASS_ORDER, HIGHPASS_FREQ, 'hp', fs=SAMPLE_RATE, output='sos')

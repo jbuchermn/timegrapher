@@ -13,10 +13,12 @@ if TYPE_CHECKING:
 HALF_YLIM_MS = 20
 
 class Display:
-    def __init__(self, control: Control, timegrapher: Timegrapher):
+    def __init__(self, timegrapher: Timegrapher):
         super().__init__()
-        self._control: Control = control
         self._timegrapher: Timegrapher = timegrapher
+
+    def update_timegrapher(self, timegrapher):
+        self._timegrapher = timegrapher
 
     def run(self):
         fig = plt.figure(constrained_layout=True)
@@ -44,9 +46,9 @@ class Display:
 
         ax_wave1.yaxis.set_ticklabels([])
         ax_wave2.yaxis.set_ticklabels([])
-        ax_wave1.set_xlim((-.2*self._control.get_mvmt_timescale_ms(), .2*self._control.get_mvmt_timescale_ms()))
+        ax_wave1.set_xlim((-.2*self._timegrapher.mvmt_timescale_ms, .2*self._timegrapher.mvmt_timescale_ms))
         ax_wave1.set_ylim((-1, 1.))
-        ax_wave2.set_xlim((-.2*self._control.get_mvmt_timescale_ms(), .2*self._control.get_mvmt_timescale_ms()))
+        ax_wave2.set_xlim((-.2*self._timegrapher.mvmt_timescale_ms, .2*self._timegrapher.mvmt_timescale_ms))
         ax_wave2.set_ylim((-1., 1.))
 
         line_wave1, = ax_wave1.plot([0], [0], 'b-')
