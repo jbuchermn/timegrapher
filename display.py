@@ -104,5 +104,5 @@ class Display:
 
             return [line_pattern1, line_pattern2, line_wave1, line_wave2]
 
-        anim = animation.FuncAnimation(fig, update, None, interval=10000, blit=False)
+        anim = animation.FuncAnimation(fig, update, None, interval=100, blit=False)
         plt.show()
