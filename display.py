@@ -43,6 +43,7 @@ class Display:
 
         line_pattern1, = ax_pattern.plot(list(range(PATTERN_TICKS)), [0] * PATTERN_TICKS, 'r.', alpha=.3)
         line_pattern2, = ax_pattern.plot(list(range(PATTERN_TICKS)), [0] * PATTERN_TICKS, 'b.')
+        line_pattern3, = ax_pattern.plot(list(range(PATTERN_TICKS)), [0] * PATTERN_TICKS, 'g.')
 
         ax_wave1.yaxis.set_ticklabels([])
         ax_wave2.yaxis.set_ticklabels([])
@@ -55,6 +56,10 @@ class Display:
         line_wave2, = ax_wave2.plot([0], [0], 'b-')
 
         ax_amplitude.set_ylim((0, 360))
+
+        ax_rate.xaxis.set_ticklabels([])
+        ax_amplitude.xaxis.set_ticklabels([])
+        ax_beat_error.xaxis.set_ticklabels([])
 
         line_rate, = ax_rate.plot([0], [0], 'b-')
         line_amplitude1, = ax_amplitude.plot([0], [0], 'y-')
@@ -72,8 +77,12 @@ class Display:
             line_pattern1.set_xdata([i for i, x in enumerate(self._timegrapher.pattern) if x is None])
             line_pattern1.set_ydata([0 for x in self._timegrapher.pattern if x is None])
 
-            line_pattern2.set_xdata([i for i, x in enumerate(self._timegrapher.pattern) if x is not None])
-            line_pattern2.set_ydata([crop(x) for x in self._timegrapher.pattern if x is not None])
+            p2 = [x for i, x in enumerate(self._timegrapher.pattern) if i%2 == 0]
+            p3 = [x for i, x in enumerate(self._timegrapher.pattern) if i%2 == 1]
+            line_pattern2.set_xdata([2*i for i, x in enumerate(p2) if x is not None])
+            line_pattern2.set_ydata([crop(x) for x in p2 if x is not None])
+            line_pattern3.set_xdata([2*i+1 for i, x in enumerate(p3) if x is not None])
+            line_pattern3.set_ydata([crop(x) for x in p3 if x is not None])
 
             ts, ys, final = self._timegrapher.tick_wave
             line_wave1.set_xdata(ts)

@@ -12,7 +12,7 @@
 - Regular tick
 - Tick detected t_1 too early, t_1 within tolerance
 - Next tick detected t_2 too early, t_2 within tolerance, but t_1 + t_2 out of tolerance
-*** STRT Is missing Audio frames due to incredibly slow matplotlib still an issue? Implement check
+*** DONE Is missing Audio frames due to incredibly slow matplotlib still an issue? Implement check
 *** DONE Prevent missing frames due to slow plotting -> enable small frame sizes
 
 ** TODO Verify wave-form quality compared to tg-timer (ETA2782)

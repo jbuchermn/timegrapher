@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 SAMPLE_RATE = 44100.
 MS_PER_FRAME = 1000. / SAMPLE_RATE
+PERIOD_SIZE = 320
 
 HIGHPASS_FREQ = 3000
 HIGHPASS_ORDER = 10
@@ -178,7 +179,7 @@ class Capture(Thread):
             channels=1,
             rate=int(SAMPLE_RATE),
             format=alsaaudio.PCM_FORMAT_S16_LE,
-            periodsize=160,
+            periodsize=PERIOD_SIZE,
         )
 
         self._highpass = signal.butter(HIGHPASS_ORDER, HIGHPASS_FREQ, 'hp', fs=SAMPLE_RATE, output='sos')
@@ -241,8 +242,10 @@ class Capture(Thread):
 
     def run(self):
 
+        check_ref_timestamp = time.time()*1000
         timestamp_ms = 0
         no_signal_timestamp_ms = 0
+        last_missed_packets = 0
 
         tick = Tick(self._control)
         while self._running:
@@ -256,11 +259,19 @@ class Capture(Thread):
             arr = np.frombuffer(data[:(2*l)], dtype=np.int16)
             arr = signal.sosfilt(self._highpass, arr)
 
+            check_timestamp_ms = time.time()*1000 - check_ref_timestamp
             timestamp_ms += l * MS_PER_FRAME
+            missed_packets = round((check_timestamp_ms - timestamp_ms) / (PERIOD_SIZE * MS_PER_FRAME))
+            if missed_packets > 0 and missed_packets == last_missed_packets:
+                print("Detected packet loss: %d" % missed_packets)
+                timestamp_ms += missed_packets * PERIOD_SIZE * MS_PER_FRAME
+            last_missed_packets = missed_packets
+
             if not tick.possibly_append(arr, timestamp_ms):
                 self._process(tick, timestamp_ms)
                 tick = Tick(self._control)
                 no_signal_timestamp_ms = timestamp_ms
+
             elif timestamp_ms - no_signal_timestamp_ms > 1000.:
                 print("No signal...")
                 self._control.no_signal()
