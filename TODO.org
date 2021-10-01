@@ -5,6 +5,7 @@
 ** DONE Plot long-term rate, beat error, amplitude with smoothed curve
 ** DONE Beat rate detect
 ** TODO Plot peaks
+** DONE Make control values configurable to override loops
 ** TODO Control peak threshold / Better peak detection
 ** TODO Get rid of all errors in a clean environment (Needs better capture implementation)
 *** WAIT Possibly: Improve capture by capturing longtime wave and then processing it

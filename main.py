@@ -1,8 +1,8 @@
 from __future__ import annotations
 from typing import Optional, Callable
 
-import sys
 import time
+import argparse
 from threading import Thread
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -14,18 +14,26 @@ from timegrapher import Timegrapher
 from display import Display
 from multiprocessing.connection import Listener, Client
 
-address = ('localhost', 6000)
+MP_ADDRESS = ('localhost', 6000)
+MP_AUTH = "timegrapher".encode("ascii")
+
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Timegrapher')
+    parser.add_argument('-d', '--display', action='store_true')
+    parser.add_argument('-b', '--bph', type=int)
+    parser.add_argument('-t', '--tick-threshold', type=float)
+    parser.add_argument('-p', '--peak-threshold', type=float)
+    args = parser.parse_args()
 
-    if len(sys.argv) < 2 or sys.argv[1] == "--server":
+    if not args.display:
         print("Starting timegrapher...")
-        control = Control()
+        control = Control(args.bph, args.tick_threshold, args.peak_threshold)
         tg: Timegrapher = Timegrapher(control)
 
         Capture(control, "hw:2,0", tg).start()
 
-        listener = Listener(address, authkey='timegrapher'.encode("ascii"))
+        listener = Listener(MP_ADDRESS, authkey=MP_AUTH)
         while True:
             conn = listener.accept()
             print('Connection accepted from', listener.last_accepted)
@@ -46,7 +54,7 @@ if __name__ == '__main__':
 
             while True:
                 try:
-                    conn = Client(address, authkey='timegrapher'.encode("ascii"))
+                    conn = Client(MP_ADDRESS, authkey=MP_AUTH)
                     print("Connection established")
                     while True:
                         conn.send('tick')

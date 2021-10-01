@@ -12,10 +12,12 @@ if TYPE_CHECKING:
 
 SAMPLE_RATE = 44100.
 MS_PER_FRAME = 1000. / SAMPLE_RATE
-PERIOD_SIZE = 320
+PERIOD_SIZE = 640
 
 HIGHPASS_FREQ = 3000
 HIGHPASS_ORDER = 10
+MOVING_AVG = 5
+
 
 TICK_PRERECORD = 0.2
 TICK_MINLENGTH = 0.3
@@ -33,6 +35,7 @@ class Tick:
         self._started: bool = False
         self._buffer: np.ndarray = np.zeros(shape=(int(TICK_MAXLENGTH*self._control.get_mvmt_timescale_frames()),),
                                             dtype=np.int16)
+        self._wave: Optional[tuple[np.ndarray, np.ndarray]] = None
         self._buffer_at: int = 0
 
         self._timestamp: float = 0.
@@ -51,6 +54,7 @@ class Tick:
             # Recording
 
             self._started = True
+            self._wave = None
 
             l = min(next_input.shape[0], int(TICK_MAXLENGTH*self._control.get_mvmt_timescale_frames())-self._buffer_at)
             self._buffer[self._buffer_at:(self._buffer_at+l)] = next_input[:l]
@@ -78,10 +82,15 @@ class Tick:
                 return False
 
     def get_wave(self):
+        if self._wave is None:
+            self._calculate_wave()
+
         if len(self._ticks) == 0:
             self._calculate_ticks()
 
-        return (np.arange(self._buffer.shape[0]) - self._ticks[0][0])*MS_PER_FRAME, self._buffer
+
+        # return (np.arange(self._buffer.shape[0]) - self._ticks[0][0])*MS_PER_FRAME, self._buffer
+        return (self._wave[0] - self._ticks[0][0]) * MS_PER_FRAME, self._wave[1]
 
     def get_start_timestamp(self):
         if len(self._ticks) == 0:
@@ -104,6 +113,35 @@ class Tick:
                 v = self._ticks[j][1]
 
         return self._timestamp + self._ticks[i][0]*MS_PER_FRAME
+
+    def _calculate_wave(self):
+        i = [0]
+        v = [0]
+        cur_i = None
+        cur_v = 0
+        above = self._buffer[0] > 0
+        for idx in range(self._buffer.shape[0]):
+            val = self._buffer[idx] / 2.**15
+
+            if (val > 0) == above:
+                if abs(val) > cur_v:
+                    cur_i = idx
+                    cur_v = abs(val)
+            else:
+                if cur_i is not None and cur_i != i[-1]:
+                    l_i = i[-1]
+                    l_v = v[-1]
+                    for k in range(cur_i - l_i):
+                        i += [l_i + k + 1]
+                        v += [l_v + (cur_v - l_v)/(cur_i - l_i)*k]
+
+                cur_v = abs(val)
+                cur_i = idx
+                above = val > 0
+
+        self._wave = np.arange(MOVING_AVG/2-1, len(v)-MOVING_AVG/2+1), \
+            np.convolve(v, np.ones(MOVING_AVG), 'valid') / MOVING_AVG
+
 
 
     def _calculate_ticks(self):

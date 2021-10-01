@@ -12,7 +12,8 @@ LIFT_ANGLE = 52
 PATTERN_TICKS = 100
 
 class TimeSeries:
-    def __init__(self):
+    def __init__(self, const=0.95):
+        self._const = const
         self.ts: list[float] = []
         self.raw: list[float] = []
         self._smooth: float = 0.
@@ -41,8 +42,8 @@ class Timegrapher:
 
         self.mvmt_timescale_ms: float = 0
 
-        self.rate: TimeSeries = TimeSeries()
-        self.beat_error: TimeSeries = TimeSeries()
+        self.rate: TimeSeries = TimeSeries(0.99)
+        self.beat_error: TimeSeries = TimeSeries(0.5)
         self.amplitude_tick: TimeSeries = TimeSeries()
         self.amplitude_tock: TimeSeries = TimeSeries()
 
@@ -106,7 +107,7 @@ class Timegrapher:
                 amplitude = 3600000. * LIFT_ANGLE / (dt * math.pi * self._control.mvmt_bph)
 
             ts, vals = tick.get_wave()
-            wave = (ts, vals/max(np.max(vals), -np.min(vals)), tick.get_final_timestamp() - tick.get_start_timestamp())
+            wave = (ts, vals / np.max(vals), tick.get_final_timestamp() - tick.get_start_timestamp())
             if self._at_tock:
                 if amplitude is not None:
                     self.amplitude_tock(tick.get_start_timestamp(), amplitude)

@@ -52,8 +52,10 @@ class Display:
         ax_wave2.set_xlim((-.2*self._timegrapher.mvmt_timescale_ms, .2*self._timegrapher.mvmt_timescale_ms))
         ax_wave2.set_ylim((-1., 1.))
 
-        line_wave1, = ax_wave1.plot([0], [0], 'b-')
-        line_wave2, = ax_wave2.plot([0], [0], 'b-')
+        line_wave11, = ax_wave1.plot([0], [0], 'b-', linewidth=1)
+        line_wave12, = ax_wave1.plot([0], [0], 'b-', linewidth=1)
+        line_wave21, = ax_wave2.plot([0], [0], 'b-', linewidth=1)
+        line_wave22, = ax_wave2.plot([0], [0], 'b-', linewidth=1)
 
         ax_amplitude.set_ylim((0, 360))
 
@@ -85,12 +87,16 @@ class Display:
             line_pattern3.set_ydata([crop(x) for x in p3 if x is not None])
 
             ts, ys, final = self._timegrapher.tick_wave
-            line_wave1.set_xdata(ts)
-            line_wave1.set_ydata(ys)
+            line_wave11.set_xdata(ts)
+            line_wave11.set_ydata(ys)
+            line_wave12.set_xdata(ts)
+            line_wave12.set_ydata(-ys)
 
             ts, ys, final = self._timegrapher.tock_wave
-            line_wave2.set_xdata(ts)
-            line_wave2.set_ydata(ys)
+            line_wave21.set_xdata(ts)
+            line_wave21.set_ydata(ys)
+            line_wave22.set_xdata(ts)
+            line_wave22.set_ydata(-ys)
 
             if len(self._timegrapher.rate.ts) > 1:
                 ax_rate.set_xlim((min(self._timegrapher.rate.ts), max(self._timegrapher.rate.ts)))
@@ -113,7 +119,7 @@ class Display:
                 line_beat_error.set_xdata(self._timegrapher.beat_error.ts)
                 line_beat_error.set_ydata(self._timegrapher.beat_error.smooth)
 
-            return [line_pattern1, line_pattern2, line_wave1, line_wave2]
+            return [line_pattern1, line_pattern2, line_wave11, line_wave12, line_wave21, line_wave22]
 
         anim = animation.FuncAnimation(fig, update, None, interval=100, blit=False)
         plt.show()
