@@ -1,19 +1,21 @@
 #+TITLE: TODO
 
-** DONE Plot wave-forms
-** DONE Plot missed / erroneous ticks in a useful manner
-** DONE Plot long-term rate, beat error, amplitude with smoothed curve
-** DONE Beat rate detect
-** TODO Plot peaks
-** DONE Make control values configurable to override loops
-** TODO Control peak threshold / Better peak detection
-** TODO Get rid of all errors in a clean environment (Needs better capture implementation)
-*** WAIT Possibly: Improve capture by capturing longtime wave and then processing it
-*** STRT Capture: Evaluate dt based on last two ticks to prevent following situation and make reset on MEM extremely seldom:
-- Regular tick
-- Tick detected t_1 too early, t_1 within tolerance
-- Next tick detected t_2 too early, t_2 within tolerance, but t_1 + t_2 out of tolerance
-*** DONE Is missing Audio frames due to incredibly slow matplotlib still an issue? Implement check
-*** DONE Prevent missing frames due to slow plotting -> enable small frame sizes
+* Plotting
+** TODO Wave-plot: Thresholds / fixed y-scale
+** TODO Wave-plot: Peaks
+** TODO Wave-plot: Fill
 
+* Control / Automatic mode
+** TODO Control peak threshold
+** TODO Calibration mode as opposed to continuous control loops (command-line flag)
+
+* Peaks / Processing
 ** TODO Verify wave-form quality compared to tg-timer (ETA2782)
+** TODO Improve peak detection
+
+* Usage
+** TODO Get rid of multiprocess setup
+** TODO Command-line flags: screen / no-screen / plot output / write to file / ...
+** TODO Improve output
+** TODO Improve TimeSeries (over long time such granular storage is not necessary)
+** TODO Verify that under normal curcumstances, even long-running, frames are never skipped and almost no E / M appear

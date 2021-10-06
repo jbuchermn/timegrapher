@@ -3,6 +3,7 @@ from typing import Optional, Callable, Union, TYPE_CHECKING
 
 import math
 import numpy as np
+import time
 
 if TYPE_CHECKING:
     from capture import Tick
@@ -16,15 +17,23 @@ class TimeSeries:
         self._const = const
         self.ts: list[float] = []
         self.raw: list[float] = []
-        self._smooth: float = 0.
-        self.smooth: list[float] =[]
+
+        self._initial: list[float] = []
+        self._smooth: Optional[float] = None
+        self.smooth: list[float] = []
 
     def __call__(self, timestamp: float, value: float):
-        self.ts += [timestamp]
-        self.raw += [value]
+        if len(self._initial) < 1/(1.-self._const):
+            self._initial += [value]
 
-        self._smooth = self._smooth * 0.95 + value * 0.05
-        self.smooth += [self._smooth]
+        else:
+            if self._smooth is None:
+                self._smooth = np.average(self._initial)
+
+            self.ts += [timestamp]
+            self.raw += [value]
+            self._smooth = self._smooth * 0.95 + value * 0.05
+            self.smooth += [self._smooth]
 
 class Timegrapher:
     def __init__(self, control: Control):
@@ -56,7 +65,6 @@ class Timegrapher:
         self._beat_error = []
         self._amplitude = []
 
-
     def __call__(self, tick: Union[Tick, float]) -> None:
         rate: Optional[float] = None
         beat_error: Optional[float] = None
@@ -71,16 +79,16 @@ class Timegrapher:
             dt = tick.get_final_timestamp() - tick.get_start_timestamp()
 
             if self._at_tock:
-                if self._last_tick is not None:
-                    rate = tick.get_start_timestamp() - self._last_tick.get_start_timestamp()
+                if self._last_tock is not None:
+                    rate = (tick.get_start_timestamp() - self._last_tock.get_start_timestamp()) / 2.
                 if self._last_tick is not None and self._last_tock is not None:
                     beat_error = np.abs(tick.get_start_timestamp() - 2*self._last_tick.get_start_timestamp() +
                                         self._last_tock.get_start_timestamp())
 
                 self._last_tock = tick
             else:
-                if self._last_tock is not None:
-                    rate = tick.get_start_timestamp() - self._last_tock.get_start_timestamp()
+                if self._last_tick is not None:
+                    rate = (tick.get_start_timestamp() - self._last_tick.get_start_timestamp()) / 2.
                 if self._last_tick is not None and self._last_tock is not None:
                     beat_error = np.abs(tick.get_start_timestamp() - 2*self._last_tock.get_start_timestamp() +
                                         self._last_tick.get_start_timestamp())
@@ -97,14 +105,15 @@ class Timegrapher:
         """
         if not isinstance(tick, float):
             if rate is not None:
-                rate = (24 * 3600) - (rate * self._control.mvmt_bph * 24. / 1000.)
                 self.rate(tick.get_start_timestamp(), rate)
             if beat_error is not None:
                 self.beat_error(tick.get_start_timestamp(), beat_error)
 
             amplitude: Optional[float] = None
-            if dt is not None:
+            if dt is not None and dt > 0:
                 amplitude = 3600000. * LIFT_ANGLE / (dt * math.pi * self._control.mvmt_bph)
+                if amplitude > 360:
+                    amplitude = None
 
             ts, vals = tick.get_wave()
             wave = (ts, vals / np.max(vals), tick.get_final_timestamp() - tick.get_start_timestamp())
@@ -136,3 +145,6 @@ class Timegrapher:
         Book-keeping
         """
         self._at_tock = not self._at_tock
+
+    def get_rate_smooth(self):
+        return (24 * 3600) - (np.array(self.rate.smooth) * self._control.mvmt_bph * 24. / 1000.)

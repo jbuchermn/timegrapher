@@ -12,7 +12,8 @@ if TYPE_CHECKING:
 
 SAMPLE_RATE = 44100.
 MS_PER_FRAME = 1000. / SAMPLE_RATE
-PERIOD_SIZE = 640
+PERIOD_SIZE = 160
+PERIOD_BUNDLE = 10
 
 HIGHPASS_FREQ = 3000
 HIGHPASS_ORDER = 10
@@ -139,7 +140,7 @@ class Tick:
                 cur_i = idx
                 above = val > 0
 
-        self._wave = np.arange(MOVING_AVG/2-1, len(v)-MOVING_AVG/2+1), \
+        self._wave = np.arange(MOVING_AVG/2-1, len(v)-MOVING_AVG/2), \
             np.convolve(v, np.ones(MOVING_AVG), 'valid') / MOVING_AVG
 
 
@@ -204,7 +205,6 @@ class Tick:
         if len(self._ticks) == 0:
             self._ticks = [(0, 0)]
 
-
 class Capture(Thread):
     def __init__(self, control: Control, device: str, consumer: Callable[[Union[Tick, float]], None]):
         super().__init__()
@@ -217,7 +217,7 @@ class Capture(Thread):
             channels=1,
             rate=int(SAMPLE_RATE),
             format=alsaaudio.PCM_FORMAT_S16_LE,
-            periodsize=PERIOD_SIZE,
+            periodsize=PERIOD_SIZE*PERIOD_BUNDLE,
         )
 
         self._highpass = signal.butter(HIGHPASS_ORDER, HIGHPASS_FREQ, 'hp', fs=SAMPLE_RATE, output='sos')
@@ -244,6 +244,7 @@ class Capture(Thread):
 
     def _tick(self, tick: Tick):
         print("T")
+        self._within_MEM = 0
         self._control.tick(tick.get_start_timestamp())
         self._consumer(tick)
 
@@ -287,7 +288,9 @@ class Capture(Thread):
 
         tick = Tick(self._control)
         while self._running:
+
             l, data = self._inp.read()
+
             if l == 0:
                 time.sleep(.001)
                 continue
@@ -299,18 +302,22 @@ class Capture(Thread):
 
             check_timestamp_ms = time.time()*1000 - check_ref_timestamp
             timestamp_ms += l * MS_PER_FRAME
-            missed_packets = round((check_timestamp_ms - timestamp_ms) / (PERIOD_SIZE * MS_PER_FRAME))
+            missed_packets = round((check_timestamp_ms - timestamp_ms) / (PERIOD_SIZE * PERIOD_BUNDLE * MS_PER_FRAME))
             if missed_packets > 0 and missed_packets == last_missed_packets:
                 print("Detected packet loss: %d" % missed_packets)
-                timestamp_ms += missed_packets * PERIOD_SIZE * MS_PER_FRAME
+                timestamp_ms += missed_packets * PERIOD_SIZE * PERIOD_BUNDLE * MS_PER_FRAME
             last_missed_packets = missed_packets
 
-            if not tick.possibly_append(arr, timestamp_ms):
-                self._process(tick, timestamp_ms)
-                tick = Tick(self._control)
-                no_signal_timestamp_ms = timestamp_ms
+            i = 0
+            while i < len(arr):
+                if not tick.possibly_append(arr[i:min(len(arr), i + PERIOD_SIZE)], timestamp_ms):
+                    self._process(tick, timestamp_ms)
+                    tick = Tick(self._control)
+                    no_signal_timestamp_ms = timestamp_ms
 
-            elif timestamp_ms - no_signal_timestamp_ms > 1000.:
-                print("No signal...")
-                self._control.no_signal()
-                no_signal_timestamp_ms = timestamp_ms
+                elif timestamp_ms - no_signal_timestamp_ms > 1000.:
+                    print("No signal...")
+                    self._control.no_signal()
+                    no_signal_timestamp_ms = timestamp_ms
+
+                i += PERIOD_SIZE

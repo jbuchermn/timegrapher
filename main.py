@@ -29,22 +29,26 @@ if __name__ == '__main__':
     if not args.display:
         print("Starting timegrapher...")
         control = Control(args.bph, args.tick_threshold, args.peak_threshold)
-        tg: Timegrapher = Timegrapher(control)
 
-        Capture(control, "hw:2,0", tg).start()
-
+        tg = Timegrapher(control)
+        capture = Capture(control, "hw:2,0", tg)
         listener = Listener(MP_ADDRESS, authkey=MP_AUTH)
-        while True:
-            conn = listener.accept()
-            print('Connection accepted from', listener.last_accepted)
-            try:
-                while True:
-                    msg = conn.recv()
-                    conn.send(tg)
-            except:
-                print("Connection closed")
 
-        listener.close()
+        capture.start()
+
+        try:
+            while True:
+                conn = listener.accept()
+                print('Connection accepted from', listener.last_accepted)
+                try:
+                    while True:
+                        msg = conn.recv()
+                        conn.send(tg)
+                except:
+                    print("Connection closed")
+        finally:
+            listener.close()
+            capture.stop()
 
     else:
         display: Optional[Display] = None
