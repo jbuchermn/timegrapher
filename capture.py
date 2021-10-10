@@ -21,7 +21,7 @@ MOVING_AVG = 5
 
 
 TICK_PRERECORD = 0.2
-TICK_MINLENGTH = 0.3
+TICK_MINLENGTH = 2 * TICK_PRERECORD
 TICK_MAXLENGTH = 0.5
 
 TIMESTAMP_FILTER = 0.15
@@ -226,24 +226,31 @@ class Capture(Thread):
         self._last_timestamp_ms: int = -1
         self._within_MEM = 0
 
+    def _print(self, code: Optional[str] = None, msg: Optional[str] = None):
+        if code is not None:
+            print(code, end='', flush=True)
+        else:
+            print("\n%s" % msg)
+
+
     def stop(self):
         self._running = False
 
     def _error(self, tick):
-        print("E")
+        self._print("E")
         if self._within_MEM == 1:
             self._within_MEM += 1
         self._control.error(tick.get_start_timestamp())
 
     def _miss(self, timestamp: float):
-        print("M")
+        self._print("M")
         if self._within_MEM == 0 or self._within_MEM == 2:
             self._within_MEM += 1
         self._control.miss(timestamp)
         self._consumer(timestamp)
 
     def _tick(self, tick: Tick):
-        print("T")
+        self._print(".")
         self._within_MEM = 0
         self._control.tick(tick.get_start_timestamp())
         self._consumer(tick)
@@ -251,7 +258,7 @@ class Capture(Thread):
     def _process(self, tick, timestamp_ms):
         if self._within_MEM == 3:
             # RESET
-            print("Reset...")
+            self._print(None, "Reset...")
             self._within_MEM = 0
             self._last_timestamp_ms = -1
 
@@ -304,7 +311,7 @@ class Capture(Thread):
             timestamp_ms += l * MS_PER_FRAME
             missed_packets = round((check_timestamp_ms - timestamp_ms) / (PERIOD_SIZE * PERIOD_BUNDLE * MS_PER_FRAME))
             if missed_packets > 0 and missed_packets == last_missed_packets:
-                print("Detected packet loss: %d" % missed_packets)
+                self._print(None,"Detected packet loss: %d" % missed_packets)
                 timestamp_ms += missed_packets * PERIOD_SIZE * PERIOD_BUNDLE * MS_PER_FRAME
             last_missed_packets = missed_packets
 
@@ -316,7 +323,7 @@ class Capture(Thread):
                     no_signal_timestamp_ms = timestamp_ms
 
                 elif timestamp_ms - no_signal_timestamp_ms > 1000.:
-                    print("No signal...")
+                    self._print(None, "No signal...")
                     self._control.no_signal()
                     no_signal_timestamp_ms = timestamp_ms
 

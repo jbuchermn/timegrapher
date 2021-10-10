@@ -9,31 +9,46 @@ if TYPE_CHECKING:
     from capture import Tick
     from control import Control
 
-LIFT_ANGLE = 52
 PATTERN_TICKS = 100
+TIME_SERIES_AVG_RECENT = 20
+TIME_SERIES_SKIP_RECENT = 4
+TIME_SERIES_EXTENT_RECENT = 100
+TIME_SERIES_AVG_LONG = 100
+TIME_SERIES_SKIP_LONG = 20
 
 class TimeSeries:
-    def __init__(self, const=0.95):
-        self._const = const
-        self.ts: list[float] = []
-        self.raw: list[float] = []
+    def __init__(self):
+        # Timestamp, value, stddev
+        self.series_recent: list[tuple[float, float, float]] = []
+        self.series_long: list[tuple[float, float, float]] = []
+        self._current: list[tuple[float, float]] = []
+        self._recent_idx: int = 0
 
-        self._initial: list[float] = []
-        self._smooth: Optional[float] = None
-        self.smooth: list[float] = []
+    def _calculate(self, n, skip):
+        vals = np.array([v for t, v in self._current[len(self._current)-n:]])
+        t = 0.5*(self._current[len(self._current)-n][0] + self._current[-1][0])
+
+        temp = np.argpartition(vals, skip)
+        skip_low = temp[:skip]
+        temp = np.argpartition(-vals, skip)
+        skip_high = temp[:skip]
+        vals_ma = np.ma.array(vals, mask=False)
+        vals_ma.mask[skip_low] = True
+        vals_ma.mask[skip_high] = True
+        return t, vals_ma.mean(), vals_ma.std()
 
     def __call__(self, timestamp: float, value: float):
-        if len(self._initial) < 1/(1.-self._const):
-            self._initial += [value]
+        self._current += [(timestamp, value)]
+        if len(self._current) - self._recent_idx >= TIME_SERIES_AVG_RECENT:
+            self.series_recent += [self._calculate(TIME_SERIES_AVG_RECENT, TIME_SERIES_SKIP_RECENT)]
+            self._recent_idx += TIME_SERIES_AVG_RECENT
+            if len(self.series_recent) > TIME_SERIES_EXTENT_RECENT:
+                self.series_recent = self.series_recent[1:]
 
-        else:
-            if self._smooth is None:
-                self._smooth = np.average(self._initial)
-
-            self.ts += [timestamp]
-            self.raw += [value]
-            self._smooth = self._smooth * 0.95 + value * 0.05
-            self.smooth += [self._smooth]
+        if len(self._current) >= TIME_SERIES_AVG_LONG:
+            self.series_long += [self._calculate(len(self._current), TIME_SERIES_SKIP_LONG)]
+            self._current = []
+            self._recent_idx = 0
 
 class Timegrapher:
     def __init__(self, control: Control):
@@ -49,10 +64,8 @@ class Timegrapher:
 
         self.pattern: list[Optional[float]] = [None] * PATTERN_TICKS
 
-        self.mvmt_timescale_ms: float = 0
-
-        self.rate: TimeSeries = TimeSeries(0.99)
-        self.beat_error: TimeSeries = TimeSeries(0.5)
+        self.rate: TimeSeries = TimeSeries()
+        self.beat_error: TimeSeries = TimeSeries()
         self.amplitude_tick: TimeSeries = TimeSeries()
         self.amplitude_tock: TimeSeries = TimeSeries()
 
@@ -69,8 +82,6 @@ class Timegrapher:
         rate: Optional[float] = None
         beat_error: Optional[float] = None
         dt: Optional[float] = None
-
-        self.mvmt_timescale_ms = self._control.get_mvmt_timescale_ms()
 
         """
         Calculate rate, beat_error, amplitude (dt), Book-keeping
@@ -105,18 +116,16 @@ class Timegrapher:
         """
         if not isinstance(tick, float):
             if rate is not None:
-                self.rate(tick.get_start_timestamp(), rate)
+                self.rate(tick.get_start_timestamp(), self.calculate_rate(rate))
             if beat_error is not None:
                 self.beat_error(tick.get_start_timestamp(), beat_error)
 
             amplitude: Optional[float] = None
-            if dt is not None and dt > 0:
-                amplitude = 3600000. * LIFT_ANGLE / (dt * math.pi * self._control.mvmt_bph)
-                if amplitude > 360:
-                    amplitude = None
+            if dt is not None:
+                amplitude = self.calculate_amplitude(dt)
 
             ts, vals = tick.get_wave()
-            wave = (ts, vals / np.max(vals), tick.get_final_timestamp() - tick.get_start_timestamp())
+            wave = (ts, vals, tick.get_final_timestamp() - tick.get_start_timestamp())
             if self._at_tock:
                 if amplitude is not None:
                     self.amplitude_tock(tick.get_start_timestamp(), amplitude)
@@ -146,5 +155,10 @@ class Timegrapher:
         """
         self._at_tock = not self._at_tock
 
-    def get_rate_smooth(self):
-        return (24 * 3600) - (np.array(self.rate.smooth) * self._control.mvmt_bph * 24. / 1000.)
+    def calculate_rate(self, dt):
+        return (24 * 3600) - (dt * self._control.mvmt_bph * 24. / 1000.)
+
+    def calculate_amplitude(self, dt):
+        if dt <= 0.:
+            return 0
+        return min(360, 3600000. * self._control.mvmt_lift_angle / (dt * math.pi * self._control.mvmt_bph))

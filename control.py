@@ -9,9 +9,10 @@ BEAT_RATES = [18000, 21600, 28800, 36000]
 CONTROL_UPDATE_INTERVAL = 20
 
 class Control:
-    def __init__(self, fixed_bph: Optional[int] = None, fixed_tick_threshold: Optional[float] = None, fixed_peak_threshold: Optional[float] = None):
+    def __init__(self, lift_angle: float, fixed_bph: Optional[int] = None, fixed_tick_threshold: Optional[float] = None, fixed_peak_threshold: Optional[float] = None):
         self._fixed = (fixed_bph is not None, fixed_tick_threshold is not None, fixed_peak_threshold is not None)
 
+        self.mvmt_lift_angle: float = lift_angle
         self.mvmt_bph: int = 18000 if fixed_bph is None else fixed_bph
         self.tick_threshold: float = 0.2 if fixed_tick_threshold is None else fixed_tick_threshold
         self.peak_threshold: float = 0.01 if fixed_peak_threshold is None else fixed_peak_threshold
